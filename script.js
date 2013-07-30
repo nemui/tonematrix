@@ -28,13 +28,10 @@ var KGN = {
 	OFF: 0x2a,	
 	ON: 0xda,
 	
-	VOLUME: 0.3,
-	NOTES: [466.16, 415.30, 369.99, 329.63, 
-			293.66, 261.63, 233.08, 207.65,
-			185.00, 164.81, 146.83, 130.81,
-			116.54, 103.83, 92.50, 	82.41],
-	SEMITONES: 2400,
-	ENVELOPE: new Float32Array([0.0,0.6,0.0,0.6]), //Attack Decay Sustain Release
+	VOLUME: 0.25,
+	START_NOTE: 369.99,
+	NOTE_RATIOS: [1, 9/8, 5/4, 3/2, 5/3, 2],
+	ENVELOPE: new Float32Array([0.0,0.5,0.0,0.6]), //Attack Decay Sustain Release
 		
 	canvas: 			null,
 	ctx: 				null,			
@@ -198,7 +195,7 @@ KGN.InGame = {
 		for (var i = 0; i < this.cells.length; i++){
 			this.cells[i] = new Array(KGN.CELL_NUMBER);
 			for (var j = 0; j < this.cells[i].length; j++){	
-				this.cells[i][j] = new KGN.Cell(i, j, 0, KGN.NOTES[i]);
+				this.cells[i][j] = new KGN.Cell(i, j, 0);
 			}
 		}
 	},
@@ -261,7 +258,7 @@ KGN.InGame = {
 	
 }
 
-KGN.Cell = function(i, j, status, frequency){
+KGN.Cell = function(i, j, status){
 	this.i = i;
 	this.j = j;
 	this.x = j * (KGN.CELL_SIZE+KGN.CELL_GAP);
@@ -381,8 +378,7 @@ KGN.Synth = {
 		this.reverb = this.context.createConvolver();
 		var rate = this.context.sampleRate
 		, length = rate * 2
-		, one_fifth_length = length / 5
-		, decay = 20
+		, decay = 15
 		, impulse = this.context.createBuffer(2, length, rate)
 		, impulseL = impulse.getChannelData(0)
 		, impulseR = impulse.getChannelData(1);
@@ -390,8 +386,8 @@ KGN.Synth = {
 		for (var i = 0; i < length; i++) {
 			impulseL[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
 			impulseR[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
-			if (i > one_fifth_length && decay > 15){
-				decay -= 1;
+			if (i > length/3){
+				decay = 8;
 			}
 		}
 		this.reverb.buffer = impulse;
@@ -400,8 +396,14 @@ KGN.Synth = {
 		this.compressor.connect(this.context.destination);
 		
 		this.voices = new Array(KGN.CELL_NUMBER);
-		for (var i = 0; i < this.voices.length; i++){
-			this.voices[i] = new KGN.Voice(this.context, KGN.NOTES[i]);
+		var base_freq = KGN.START_NOTE;
+		var ratio_index = 0;
+		for (var i = this.voices.length-1; i >=0; i--){
+			this.voices[i] = new KGN.Voice(this.context, base_freq*KGN.NOTE_RATIOS[ratio_index++]);
+			if (ratio_index == 5){
+				base_freq = base_freq*KGN.NOTE_RATIOS[ratio_index];
+				ratio_index = 0;
+			}
 		}
 		this.ready = true;
 	},
@@ -413,18 +415,10 @@ KGN.Synth = {
 }
 
 KGN.Voice = function(context, frequency){
-	var saw_osc = KGN.Synth.context.createOscillator();
-	saw_osc.frequency.value = frequency;
-	saw_osc.type = saw_osc.TRIANGLE;
-	saw_osc.detune.value = KGN.SEMITONES;
-	if (!saw_osc.start){
-		saw_osc.start = saw_osc.noteOn;
-	}
 	
 	var sine_osc = KGN.Synth.context.createOscillator();
 	sine_osc.frequency.value = frequency;
 	sine_osc.type = sine_osc.SINE;
-	sine_osc.detune.value = KGN.SEMITONES;
 	if (!sine_osc.start){
 		sine_osc.start = sine_osc.noteOn;
 	}
@@ -432,14 +426,11 @@ KGN.Voice = function(context, frequency){
 	var gain = KGN.Synth.context.createGainNode();
 	gain.gain.value = 0;
 	
-	saw_osc.connect(gain);
 	sine_osc.connect(gain);
 	gain.connect(KGN.Synth.reverb);
-	saw_osc.start(0);
 	sine_osc.start(0);
 	
 	this.sine_osc = sine_osc;
-	this.saw_osc = saw_osc;
 	this.gain = gain;
 	
 	this.play = function(){
