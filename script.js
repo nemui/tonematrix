@@ -28,10 +28,10 @@ var KGN = {
 	OFF: 0x2a,	
 	ON: 0xda,
 	
-	VOLUME: 0.25,
+	VOLUME: 0.5,
 	START_NOTE: 369.99,
 	NOTE_RATIOS: [1, 9/8, 5/4, 3/2, 5/3, 2],
-	ENVELOPE: new Float32Array([0.0,0.5,0.0,0.6]), //Attack Decay Sustain Release
+	ENVELOPE: new Float32Array([0,0.1,0,0]), //Attack Decay Sustain Release
 		
 	canvas: 			null,
 	ctx: 				null,			
@@ -150,7 +150,6 @@ KGN.Input = {
 			e.preventDefault();
 			KGN.Input.unset(e);
 		}, false);
-       
 	},
 
 	set: function(event) {
@@ -369,6 +368,7 @@ KGN.Synth = {
 	ready: false,
 	context: null, 
 	voices: null,
+	filter: null,
 	reverb: null,
 	compressor: null,
 	
@@ -391,7 +391,14 @@ KGN.Synth = {
 			}
 		}
 		this.reverb.buffer = impulse;
+		
 		this.compressor = this.context.createDynamicsCompressor();
+		
+		this.filter = this.context.createBiquadFilter();
+		this.filter.type = this.filter.LOWPASS;
+		this.filter.frequency.value = KGN.START_NOTE*3;
+		
+		this.filter.connect(this.reverb);
 		this.reverb.connect(this.compressor);
 		this.compressor.connect(this.context.destination);
 		
@@ -427,7 +434,7 @@ KGN.Voice = function(context, frequency){
 	gain.gain.value = 0;
 	
 	sine_osc.connect(gain);
-	gain.connect(KGN.Synth.reverb);
+	gain.connect(KGN.Synth.filter);
 	sine_osc.start(0);
 	
 	this.sine_osc = sine_osc;
