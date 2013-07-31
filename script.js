@@ -352,6 +352,8 @@ KGN.InGame = {
 	},
 	
 	clear_map: function(){
+		this.mode = KGN.MODE_DEFAULT;
+		this.gol_btn.change_label( "default" );
 		for (var i = 0; i < this.cells.length; i++){
 			for (var j = 0; j < this.cells[i].length; j++){
 				this.cells[i][j].pause();
