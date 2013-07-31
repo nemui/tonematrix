@@ -25,6 +25,8 @@ var KGN = {
 	WAVE_DAMP: 0.1,
 	
 	BLACK: 	"#000000",	
+	SAVE_BTN_IDLE: "#dadada",
+	SAVE_BTN_PRESSED: "#24E33B",
 	OFF: 0x2a,	
 	ON: 0xda,
 	
@@ -40,9 +42,12 @@ var KGN = {
 	init: function() {				
 		KGN.canvas = document.getElementById('game_world');
 		KGN.ctx = KGN.canvas.getContext('2d');
+		
+		
 				
 		KGN.WIDTH = KGN.CELL_NUMBER * KGN.CELL_SIZE + (KGN.CELL_NUMBER-1)*KGN.CELL_GAP;
-		KGN.HEIGHT = KGN.WIDTH;
+		KGN.HEIGHT = KGN.WIDTH + KGN.CELL_SIZE + KGN.CELL_GAP;
+		
 		
 		KGN.canvas.width = KGN.WIDTH;
 		KGN.canvas.height = KGN.HEIGHT;		
@@ -119,6 +124,7 @@ KGN.Input = {
 	ON: 1,
 	OFF: 0,
 	state: -1,
+	moved: false,
 	
 	init: function(){
 		window.addEventListener('mousedown', function(e) {
@@ -158,6 +164,7 @@ KGN.Input = {
 			this.x = event.pageX - KGN.canvas.offsetLeft;
 			this.y = event.pageY - KGN.canvas.offsetTop;
 			this.state = KGN.Input.SET;
+			this.moved = false;
 		}
 	},
 	
@@ -170,7 +177,8 @@ KGN.Input = {
 	
 	modify: function(event) {
 		this.x = event.pageX - KGN.canvas.offsetLeft;
-       this.y = event.pageY - KGN.canvas.offsetTop;       
+       	this.y = event.pageY - KGN.canvas.offsetTop;  
+       	this.moved = true;     
 	},
    
    in_rect_area: function(x, y, width, height){
@@ -188,19 +196,48 @@ KGN.InGame = {
 	column: 0,
 	prev_column: 0,	
 	previous_ms: new Date().getTime(),	
+	save_btn: null,
+	clear_btn: null,
 	
-	init: function(){						
-		this.cells = new Array(KGN.CELL_NUMBER);		
+	init: function(){
+		this.cells = new Array(KGN.CELL_NUMBER);
+		var codes = location.search.substr(1).split('.');
+		
 		for (var i = 0; i < this.cells.length; i++){
 			this.cells[i] = new Array(KGN.CELL_NUMBER);
+			var code = decodeURIComponent(codes[i]||0);
 			for (var j = 0; j < this.cells[i].length; j++){	
-				this.cells[i][j] = new KGN.Cell(i, j, 0);
+				var mask = 1<<j;
+				this.cells[i][j] = new KGN.Cell(i, j, (code&mask)>>j);
 			}
 		}
+		
+		this.clear_btn = new KGN.Button(
+			(this.cells.length/2-3) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			(this.cells.length) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			KGN.CELL_SIZE*2+KGN.CELL_GAP,
+			KGN.CELL_SIZE,
+			'clear'
+		);
+		
+		this.save_btn = new KGN.Button(
+			(this.cells.length/2+1) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			(this.cells.length) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			KGN.CELL_SIZE*2+KGN.CELL_GAP,
+			KGN.CELL_SIZE,
+			'url'
+		);
+		
 	},
 	
-	update: function(){			
-		if (KGN.Input.state != KGN.Input.UNSET){			
+	update: function(){		
+		if (this.save_btn.update()){
+			this.make_url();
+		}
+		if (this.clear_btn.update()){
+			this.clear_map();
+		}	
+		if (KGN.Input.state != KGN.Input.UNSET){	
 			var broke = false;
 			for (var i = 0; i < this.cells.length; i++){
 				for (var j = 0; j < this.cells[0].length; j++){
@@ -249,10 +286,73 @@ KGN.InGame = {
 		for (var i = 0; i < this.cells.length; i++){
 			for (var j = 0; j < this.cells[i].length; j++){
 				this.cells[i][j].render();
-				//KGN.ctx.fillStyle = "#FFFFFF";
-				//KGN.ctx.fillText(KGN.WaveMap.curr_map[i][j], this.cells[i][j].x, this.cells[i][j].y);
 			}
 		}
+		this.save_btn.render();
+		this.clear_btn.render();
+	},
+	
+	make_url: function(){
+		var codes = "?";
+		for (var i = 0; i < this.cells.length; i++){
+			var code = 0;
+			for (var j = 0; j < this.cells[i].length; j++){
+				code |= this.cells[i][j].status << j;
+			}
+			codes += code + ".";
+		}
+		window.history.replaceState('foobar', 'Tonematrix clone', 'index.html'+codes);
+	},
+	
+	clear_map: function(){
+		for (var i = 0; i < this.cells.length; i++){
+			for (var j = 0; j < this.cells[i].length; j++){
+				this.cells[i][j].pause();
+				this.cells[i][j].status = 0;
+			}
+		}
+		window.history.replaceState('foobar', 'Tonematrix clone', 'index.html');
+	}
+}
+
+KGN.Button = function(x, y, width, height, label){
+	this.x = x;
+	this.y = y;
+	this.width = width;
+	this.height = height;
+	this.label = label;
+	KGN.ctx.font = "12px sans-serif";
+	this.label_x = x + (width - KGN.ctx.measureText(label).width)/2;
+	this.label_y = y + height/2;
+	this.pressed = false;
+	
+	this.render = function(){
+		if (this.pressed){
+			KGN.ctx.strokeStyle = KGN.SAVE_BTN_PRESSED;
+			KGN.ctx.fillStyle = KGN.SAVE_BTN_PRESSED;
+		}
+		else{
+			KGN.ctx.strokeStyle = KGN.SAVE_BTN_IDLE;
+			KGN.ctx.fillStyle = KGN.SAVE_BTN_IDLE;
+		}
+		KGN.ctx.strokeRect(this.x, this.y, this.width, this.height);
+		KGN.ctx.font="12px sans-serif";
+		KGN.ctx.textBaseline="middle";
+		KGN.ctx.fillText(this.label, this.label_x, this.label_y);
+	}
+	
+	this.update = function(){
+		var result = false;
+		if (KGN.Input.state == KGN.Input.SET && KGN.Input.moved == false && KGN.Input.in_rect_area(this.x, this.y, this.width, this.height)){
+			if (!this.pressed){
+				this.pressed = true;
+				result = true;
+			}
+		}	
+		else{
+			this.pressed = false;
+		}	
+		return result;
 	}
 	
 }
@@ -277,8 +377,7 @@ KGN.Cell = function(i, j, status){
 			var temp = this.color.toString(16);
 			this.color = "#" + temp + "" + temp + "" + temp;
 		}
-		KGN.ctx.fillStyle = this.color;				
-		//KGN.ctx.fillRect(this.x, this.y, KGN.CELL_SIZE, KGN.CELL_SIZE);		
+		KGN.ctx.fillStyle = this.color;						
 		
 		KGN.ctx.beginPath();
 		KGN.ctx.moveTo(this.x, this.y + KGN.CELL_RADIUS);
