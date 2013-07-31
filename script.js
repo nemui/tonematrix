@@ -24,6 +24,9 @@ var KGN = {
 	WAVE_FORCE: 80,
 	WAVE_DAMP: 0.1,
 	
+	MODE_DEFAULT:	0,
+	MODE_GAME_OF_LIFE: 1,
+	
 	BLACK: 	"#000000",	
 	SAVE_BTN_IDLE: "#dadada",
 	SAVE_BTN_PRESSED: "#24E33B",
@@ -192,12 +195,15 @@ KGN.Input = {
 };
 
 KGN.InGame = {	
+	mode: KGN.MODE_DEFAULT,
 	cells: null,	
 	column: 0,
 	prev_column: 0,	
-	previous_ms: new Date().getTime(),	
+	previous_ms: new Date().getTime(),
+	neighbour: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]],	
 	save_btn: null,
 	clear_btn: null,
+	gol_btn: null,
 	
 	init: function(){
 		this.cells = new Array(KGN.CELL_NUMBER);
@@ -221,11 +227,19 @@ KGN.InGame = {
 		);
 		
 		this.save_btn = new KGN.Button(
-			(this.cells.length/2+1) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			(this.cells.length/2-1) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
 			(this.cells.length) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
 			KGN.CELL_SIZE*2+KGN.CELL_GAP,
 			KGN.CELL_SIZE,
 			'url'
+		);
+		
+		this.gol_btn = new KGN.Button(
+			(this.cells.length/2+1) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			(this.cells.length) * (KGN.CELL_SIZE+KGN.CELL_GAP) - 1, 
+			KGN.CELL_SIZE*3+KGN.CELL_GAP*2,
+			KGN.CELL_SIZE,
+			'default'
 		);
 		
 	},
@@ -234,9 +248,12 @@ KGN.InGame = {
 		if (this.save_btn.update()){
 			this.make_url();
 		}
-		if (this.clear_btn.update()){
+		else if (this.clear_btn.update()){
 			this.clear_map();
 		}	
+		else if (this.gol_btn.update()){
+			this.toggle_gol();
+		}
 		if (KGN.Input.state != KGN.Input.UNSET){	
 			var broke = false;
 			for (var i = 0; i < this.cells.length; i++){
@@ -277,6 +294,35 @@ KGN.InGame = {
 				}
 			}
 			this.prev_column = this.column;
+			
+			if (this.mode == KGN.MODE_GAME_OF_LIFE && this.column == KGN.CELL_NUMBER - 1){
+				for (var i = 0; i < this.cells.length; i++){
+					for (var j = 0; j < this.cells[i].length; j++){
+						var alive = 0;	
+						for (var k = 0; k < this.neighbour.length; k++){
+							var ni = i + this.neighbour[k][0];
+							var nj = j + this.neighbour[k][1];
+							ni = (ni < 0) ? ni + this.cells.length : (ni >= this.cells.length) ? ni - this.cells.length : ni;
+							nj = (nj < 0) ? nj + this.cells[i].length : (nj >= this.cells[i].length) ? nj - this.cells[i].length : nj;
+							alive += this.cells[ni][nj].status;
+						}
+						if (alive < 2 || alive > 3){
+							this.cells[i][j].next_status = 0;
+						}					
+						else if (alive == 3){
+							this.cells[i][j].next_status = 1;
+						}
+						else {
+							this.cells[i][j].next_status = this.cells[i][j].status;
+						}
+					}
+				}
+				for (var i = 0; i < this.cells.length; i++){
+					for (var j = 0; j < this.cells[i].length; j++){
+						this.cells[i][j].status = this.cells[i][j].next_status;
+					}
+				}
+			}
 		}
 		
 		KGN.WaveMap.update();		
@@ -290,6 +336,7 @@ KGN.InGame = {
 		}
 		this.save_btn.render();
 		this.clear_btn.render();
+		this.gol_btn.render();
 	},
 	
 	make_url: function(){
@@ -312,6 +359,23 @@ KGN.InGame = {
 			}
 		}
 		window.history.replaceState('foobar', 'Tonematrix clone', 'index.html');
+	},
+	
+	toggle_gol: function(){
+		this.mode = 1 - this.mode;
+		
+		if (this.mode == KGN.MODE_DEFAULT){
+			this.gol_btn.change_label( "default" );
+		}
+		else{
+			this.gol_btn.change_label( "game of life" );
+			for (var i = 0; i < this.cells.length; i++){
+				for (var j = 0; j < this.cells[i].length; j++){	
+					this.cells[i][j].pause();
+					this.cells[i][j].status = KGN.random(2);
+				}
+			}
+		}
 	}
 }
 
@@ -320,10 +384,10 @@ KGN.Button = function(x, y, width, height, label){
 	this.y = y;
 	this.width = width;
 	this.height = height;
-	this.label = label;
 	KGN.ctx.font = "12px sans-serif";
 	this.label_x = x + (width - KGN.ctx.measureText(label).width)/2;
 	this.label_y = y + height/2;
+	this.label = label;
 	this.pressed = false;
 	
 	this.render = function(){
@@ -353,6 +417,13 @@ KGN.Button = function(x, y, width, height, label){
 			this.pressed = false;
 		}	
 		return result;
+	}
+	
+	this.change_label = function(new_label){
+		KGN.ctx.font = "12px sans-serif";
+		this.label_x = x + (width - KGN.ctx.measureText(new_label).width)/2;
+		this.label_y = y + height/2;
+		this.label = new_label;
 	}
 	
 }
