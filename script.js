@@ -602,7 +602,7 @@ KGN.Voice = function(context, frequency){
 		sine_osc.start = sine_osc.noteOn;
 	}
 	
-	var gain = KGN.Synth.context.createGainNode();
+	var gain = KGN.Synth.context.createGain();
 	gain.gain.value = 0;
 	
 	sine_osc.connect(gain);
